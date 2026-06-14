@@ -703,8 +703,6 @@ def main():
             if "#foryou" not in hashtags: hashtags += " #foryou"
             
             msg = (
-                f"😱 {estetica['tag'].upper()}: {misterio}... 😱\n"
-                f".\n"
                 f"🔴VEJA COMPLETO NO LINK🔗: {n['link']}\n"
                 f".\n"
                 f".\n"

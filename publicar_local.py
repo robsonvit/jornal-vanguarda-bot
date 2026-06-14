@@ -303,8 +303,6 @@ def publicar(noticia, img_bytes):
 
     padding = "\n.\n.\n"
     msg = (
-        f"😱 {noticia['title'].upper()} 😱\n"
-        f".\n"
         f"🔴VEJA COMPLETO NO LINK🔗: {noticia['link']}\n"
         f".\n"
         f".\n"
@@ -347,8 +345,8 @@ if __name__ == "__main__":
         nome_pagina = verificar_token()
 
         print(f"\n⚠️  Você está prestes a publicar na página: '{nome_pagina}'")
-        print("   Pressione ENTER para continuar ou CTRL+C para cancelar...")
-        input()
+        print("   Executando teste automatizado sem pausa...")
+        # input()
 
         noticia = buscar_noticia()
         print(f"\n  📰 Notícia: {noticia['title'][:80]}")
