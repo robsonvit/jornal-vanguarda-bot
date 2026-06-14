@@ -180,7 +180,7 @@ def gerar_gancho(title):
         f"Analise a notícia: \"{title}\".\n"
         f"Retorne APENAS um JSON válido com a seguinte estrutura:\n"
         "{\n"
-        "  \"hook\": \"Título curtíssimo (máx 3 palavras) em CAIXA ALTA sobre a notícia para ir na imagem. CAMUFLE palavras sensíveis (M0RT3, S@NGU3)\",\n"
+        "  \"hook\": \"Título em CAIXA ALTA, muito humano, coeso e extremamente curioso para atrair cliques (máx 6 palavras, evite palavras soltas/sem sentido). CAMUFLE palavras sensíveis (M0RT3, S@NGU3)\",\n"
         "  \"tag\": \"Categoria curta (ex: URGENTE, POLÍTICA, FOFOCA, CRIME)\",\n"
         "  \"emoji\": \"código hexadecimal do emoji sem U+, ex: 1f6a8\",\n"
         "  \"hashtags\": \"#hashtag1 #hashtag2 #hashtag3\",\n"
@@ -366,6 +366,13 @@ def adicionar_texto_premium(img_bytes, dados_esteticos):
     from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
     
     img_orig = Image.open(BytesIO(img_bytes)).convert("RGB")
+    
+    # Reconstruir imagem para garantir a remoção completa de metadados/EXIF
+    data = list(img_orig.getdata())
+    img_clean = Image.new(img_orig.mode, img_orig.size)
+    img_clean.putdata(data)
+    img_orig = img_clean
+    
     font_path = baixar_fonte()
 
     def build_ui(target_ratio):
@@ -694,7 +701,11 @@ def main():
             # 🔗VEJA MAIS NO LINK: URL
             
             padding_bottom = "\n.\n.\n.\n"
-            msg = f"😱 {estetica['tag'].upper()}: {misterio}... 😱\n.\n{hashtags}{padding_bottom}🔗VEJA MAIS NO LINK: {n['link']}"
+            
+            if "#viral" not in hashtags: hashtags += " #viral"
+            if "#foryou" not in hashtags: hashtags += " #foryou"
+            
+            msg = f"😱 {estetica['tag'].upper()}: {misterio}... 😱\n.\n{hashtags}{padding_bottom}🔴VEJA COMPLETO NO LINK🔗: {n['link']}"
             
             video_id = publicar_reel(FB_PAGE_ID, FB_TOKEN, temp_video, msg)
             
