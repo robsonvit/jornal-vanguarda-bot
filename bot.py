@@ -223,37 +223,45 @@ def gerar_gancho(title):
     log.warning("❌ Falha em todas as tentativas do Gemini. Usando título genérico.")
     return default_res
 
-def gerar_video_ffmpeg(img_path, audio_path, output_path, duration=20):
+def gerar_video_ffmpeg(img_bg_path, img_text_path, audio_path, output_path, duration=20):
     """
-    Cria um vídeo com movimento real (efeito Ken Burns / zoom suave) a partir de uma
-    imagem e um áudio — evitando detecção como 'imagem estática' pelo Facebook.
-    Resolução saída: 1080x1920 (9:16), bitrate alto, sem tune stillimage.
+    Cria um vídeo com movimento real (efeito Ken Burns / zoom suave) no background,
+    e o texto aparece com um leve movimento da esquerda para a direita + fade in (1.5s).
     """
-    log.info(f"🎞️ Gerando vídeo DINÂMICO de {duration}s com Ken Burns...")
+    log.info(f"🎞️ Gerando vídeo DINÂMICO de {duration}s com Ken Burns e texto animado...")
     try:
         fps = 30
         total_frames = duration * fps
 
-        # Efeito Ken Burns: zoom gradual de 1.0 → 1.08 ao longo de todos os frames
-        # A imagem de entrada já está em 2160x3840 — resolução ideal para o zoom sem artefatos
-        # zoompan trabalha no tamanho original da imagem e escala a saída para 1080x1920
-        zoom_filter = (
-            f"zoompan=z='min(zoom+0.0003,1.08)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
-            f":d={total_frames}:s=1080x1920:fps={fps}"
+        # Background filter: Zoom pan (Ken Burns)
+        bg_filter = (
+            f"[0:v]zoompan=z='min(zoom+0.0003,1.08)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
+            f":d={total_frames}:s=1080x1920:fps={fps}[bg];"
         )
-
-        # Fade de áudio: 0.5s no início e 1s no final
-        audio_filter = f"afade=t=in:st=0:d=0.5,afade=t=out:st={max(duration-1,0)}:d=1"
+        
+        # Text layer filter: Scale to 1080x1920, apply alpha fade-in of 1.5s
+        text_filter = f"[1:v]scale=1080:1920,fade=t=in:st=0:d=1.5:alpha=1[txt];"
+        
+        # Overlay: slide from x=-100 to x=0 over 1.5s
+        overlay_filter = f"[bg][txt]overlay=x='-100 + (100/1.5)*min(t,1.5)':y=0[v]"
+        
+        audio_filter = f"[2:a]afade=t=in:st=0:d=0.5,afade=t=out:st={max(duration-1,0)}:d=1[a]"
+        
+        filter_complex = bg_filter + text_filter + overlay_filter + ";" + audio_filter
 
         cmd = [
             "ffmpeg", "-y",
             "-loop", "1",
             "-framerate", str(fps),
-            "-i", img_path,
+            "-i", img_bg_path,
+            "-loop", "1",
+            "-framerate", str(fps),
+            "-i", img_text_path,
             "-stream_loop", "-1",
             "-i", audio_path,
-            "-vf", zoom_filter,
-            "-af", audio_filter,
+            "-filter_complex", filter_complex,
+            "-map", "[v]",
+            "-map", "[a]",
             "-c:v", "libx264",
             "-preset", "fast",
             "-crf", "18",
@@ -395,7 +403,9 @@ def adicionar_texto_premium(img_bytes, dados_esteticos):
         paste_y = int(H * 0.1)
         canvas.paste(img_sharp, (paste_x, paste_y))
         
-        draw = ImageDraw.Draw(canvas)
+        # Cria a camada de texto transparente
+        text_layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(text_layer)
         
         try:
             f_tag = ImageFont.truetype(font_path, int(45 * sf))
@@ -428,31 +438,46 @@ def adicionar_texto_premium(img_bytes, dados_esteticos):
             draw.text((int(W*0.1), y_text), line, fill="white", font=f_text)
             y_text += int(85 * sf)
             
-        return canvas
+        return canvas, text_layer
 
     # A) IMAGEM REEL (Centro 1:1 + Blur 9:16)
-    img_core_1_1 = build_ui(1.0)
+    img_bg_1_1, text_layer_1_1 = build_ui(1.0)
     sf = 2
     tw_sf, th_sf = 2160, 3840
     bg_size = th_sf
-    background = img_core_1_1.resize((bg_size, bg_size), Image.Resampling.LANCZOS)
+    
+    # 1. Montar fundo 9:16
+    background = img_bg_1_1.resize((bg_size, bg_size), Image.Resampling.LANCZOS)
     left = (bg_size - tw_sf) // 2
     background = background.crop((left, 0, left + tw_sf, th_sf))
     background = background.filter(ImageFilter.GaussianBlur(radius=20 * sf))
     background = ImageEnhance.Brightness(background).enhance(0.55)
-    canvas_916 = background
-    img_core_scaled = img_core_1_1.resize((tw_sf, tw_sf), Image.Resampling.LANCZOS)
+    canvas_916_bg = background
+    
+    img_core_scaled_bg = img_bg_1_1.resize((tw_sf, tw_sf), Image.Resampling.LANCZOS)
     y_offset = (th_sf - tw_sf) // 2
-    canvas_916.paste(img_core_scaled.convert("RGBA"), (0, y_offset), img_core_scaled.convert("RGBA"))
-    out_reel = BytesIO()
-    canvas_916.convert("RGB").save(out_reel, format="JPEG", quality=98)
+    canvas_916_bg.paste(img_core_scaled_bg.convert("RGBA"), (0, y_offset), img_core_scaled_bg.convert("RGBA"))
+    
+    out_reel_bg = BytesIO()
+    canvas_916_bg.convert("RGB").save(out_reel_bg, format="JPEG", quality=98)
+    
+    # 2. Montar texto 9:16
+    canvas_916_text = Image.new("RGBA", (tw_sf, th_sf), (0, 0, 0, 0))
+    text_layer_scaled = text_layer_1_1.resize((tw_sf, tw_sf), Image.Resampling.LANCZOS)
+    canvas_916_text.paste(text_layer_scaled, (0, y_offset), text_layer_scaled)
+    
+    out_reel_text = BytesIO()
+    canvas_916_text.save(out_reel_text, format="PNG")
 
     # B) IMAGEM POST (4:5 puro)
-    img_core_4_5 = build_ui(0.8) # 4:5 é width/height = 4/5 = 0.8
+    img_bg_4_5, text_layer_4_5 = build_ui(0.8)
+    canvas_4_5 = img_bg_4_5.copy()
+    canvas_4_5.paste(text_layer_4_5, (0, 0), text_layer_4_5)
+    
     out_post = BytesIO()
-    img_core_4_5.convert("RGB").save(out_post, format="JPEG", quality=98)
+    canvas_4_5.convert("RGB").save(out_post, format="JPEG", quality=98)
 
-    return out_reel.getvalue(), out_post.getvalue()
+    return out_reel_bg.getvalue(), out_reel_text.getvalue(), out_post.getvalue()
 
 
 def _selecionar_link_correto(links_info: list) -> str:
@@ -662,12 +687,17 @@ def main():
                 continue
             
             estetica = gerar_gancho(n["title"])
-            img_reel_b, img_post_b = adicionar_texto_premium(img_data, estetica)
+            img_reel_bg_b, img_reel_text_b, img_post_b = adicionar_texto_premium(img_data, estetica)
             
-            # Salvar imagem temporária para o FFmpeg (Reel)
-            temp_reel_img = "temp_reel_base.jpg"
-            with open(temp_reel_img, "wb") as f:
-                f.write(img_reel_b)
+            # Salvar imagem temporária para o FFmpeg (Reel Background)
+            temp_reel_bg = "temp_reel_bg.jpg"
+            with open(temp_reel_bg, "wb") as f:
+                f.write(img_reel_bg_b)
+
+            # Salvar imagem temporária para o FFmpeg (Reel Text)
+            temp_reel_text = "temp_reel_text.png"
+            with open(temp_reel_text, "wb") as f:
+                f.write(img_reel_text_b)
 
             # Salvar imagem temporária para o Post de Foto
             temp_post_img = "temp_post.jpg"
@@ -685,7 +715,7 @@ def main():
             # Facebook exige entre 15 e 90s; usamos 20-45s para garantir qualidade
             duracao_random = random.randint(20, 45)
             
-            if not gerar_video_ffmpeg(temp_reel_img, audio_sel, temp_video, duration=duracao_random):
+            if not gerar_video_ffmpeg(temp_reel_bg, temp_reel_text, audio_sel, temp_video, duration=duracao_random):
                 continue
             
             hashtags = estetica.get("hashtags", "#noticias #brasil").lower()
@@ -726,7 +756,7 @@ def main():
                 save_state(posted_ids, posted_titles)
                 
                 # Limpeza
-                for f in [temp_reel_img, temp_post_img, temp_video]:
+                for f in [temp_reel_bg, temp_reel_text, temp_post_img, temp_video]:
                     if os.path.exists(f): os.remove(f)
                 break
             else:
@@ -735,7 +765,7 @@ def main():
                 # Tentar identificar se o erro foi de TOKEN expirado (OAuthException 190)
                 # O erro costuma vir no log do publicar_reel ou no traceback.
                 # Se for token, não adianta tentar as próximas notícias agora.
-                for f in [temp_reel_img, temp_post_img, temp_video]:
+                for f in [temp_reel_bg, temp_reel_text, temp_post_img, temp_video]:
                     if os.path.exists(f): os.remove(f)
                 
                 # Verificação simplificada de erro de token no log (simulada aqui pelo fluxo)
