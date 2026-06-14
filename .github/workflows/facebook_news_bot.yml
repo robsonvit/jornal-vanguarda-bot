@@ -56,8 +56,8 @@ jobs:
             echo "ℹ️ Nenhuma mudança de estado para salvar."
           else
             git commit -m "chore: atualizar estado do bot + links exportados [skip ci]"
-            git pull --rebase origin master
-            git push origin master
+            git pull --rebase origin main
+            git push origin main
             echo "✅ Estado e links_noticias.json enviados para o GitHub!"
           fi
 
