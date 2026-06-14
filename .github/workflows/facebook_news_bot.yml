@@ -1,0 +1,65 @@
+name: 🤖 Bot Notícias Facebook 02
+
+# O robô agora só acorda quando o Google Apps Script mandar um sinal via API (workflow_dispatch)
+on:
+  workflow_dispatch:          # Permite o disparo manual e via Google Script
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Necessário para fazer commit do posted_ids.json de volta
+
+    steps:
+      - name: 📥 Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: 🐍 Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 📦 Instalar dependências Python
+        run: pip install -r requirements.txt
+
+      - name: 🌐 Instalar Playwright + Chromium
+        run: python -m playwright install --with-deps chromium
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          ffmpeg -version
+
+      - name: 🤖 Rodar Bot
+        env:
+          SFY_EMAIL:      ${{ secrets.SFY_EMAIL }}
+          SFY_PASSWORD:   ${{ secrets.SFY_PASSWORD }}
+          FB_PAGE_ID:     ${{ secrets.FB_PAGE_ID }}
+          FB_TOKEN:       ${{ secrets.FB_TOKEN }}
+          FB_APP_ID:      ${{ secrets.FB_APP_ID }}
+          FB_APP_SECRET:  ${{ secrets.FB_APP_SECRET }}
+          FB_USER_TOKEN:  ${{ secrets.FB_USER_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python bot.py
+
+      - name: 💾 Salvar estado de posts publicados + links exportados
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          # posted_ids.json é a única fonte de verdade (contém IDs + títulos recentes)
+          # links_noticias.json é compartilhado com o Clicador de Links
+          git add posted_ids.json last_title.txt links_noticias.json 2>/dev/null || true
+          # Só commita se houver mudanças reais
+          if git diff --cached --quiet; then
+            echo "ℹ️ Nenhuma mudança de estado para salvar."
+          else
+            git commit -m "chore: atualizar estado do bot + links exportados [skip ci]"
+            git pull --rebase origin master
+            git push origin master
+            echo "✅ Estado e links_noticias.json enviados para o GitHub!"
+          fi
+
+# Retrigger parsing
+
