@@ -694,18 +694,22 @@ def main():
             # Formatação solicitada: 
             # 😱 TAG: MISTERIO... 😱
             # .
+            # 🔴VEJA COMPLETO NO LINK🔗: URL
+            # .
+            # .
             # #hashtags
-            # .
-            # .
-            # .
-            # 🔗VEJA MAIS NO LINK: URL
-            
-            padding_bottom = "\n.\n.\n.\n"
             
             if "#viral" not in hashtags: hashtags += " #viral"
             if "#foryou" not in hashtags: hashtags += " #foryou"
             
-            msg = f"😱 {estetica['tag'].upper()}: {misterio}... 😱\n.\n{hashtags}{padding_bottom}🔴VEJA COMPLETO NO LINK🔗: {n['link']}"
+            msg = (
+                f"😱 {estetica['tag'].upper()}: {misterio}... 😱\n"
+                f".\n"
+                f"🔴VEJA COMPLETO NO LINK🔗: {n['link']}\n"
+                f".\n"
+                f".\n"
+                f"{hashtags}"
+            )
             
             video_id = publicar_reel(FB_PAGE_ID, FB_TOKEN, temp_video, msg)
             

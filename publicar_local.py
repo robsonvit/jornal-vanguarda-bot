@@ -301,12 +301,14 @@ def publicar(noticia, img_bytes):
     print("PASSO 5: Publicando no Facebook...")
     print("="*60)
 
-    padding = "\n.\n.\n.\n.\n.\n"
+    padding = "\n.\n.\n"
     msg = (
-        f"😱 {noticia['title'].upper()} 😱\n\n"
-        f"Notícia urgente! Veja os detalhes chocantes agora... 💣🔥"
-        f"{padding}"
-        f"🔗 LINK: {noticia['link']}"
+        f"😱 {noticia['title'].upper()} 😱\n"
+        f".\n"
+        f"🔴VEJA COMPLETO NO LINK🔗: {noticia['link']}\n"
+        f".\n"
+        f".\n"
+        f"#noticias #urgente #viral #foryou"
     )
 
     r = requests.post(
