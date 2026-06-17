@@ -298,7 +298,7 @@ def gerar_video_ffmpeg(img_bg_path, img_text_path, audio_bg_path, audio_tts_path
         text_filter = f"[1:v]scale=1080:1920,fade=t=in:st=0:d=1.5:alpha=1[txt];"
         
         # Overlay: slide from x=-100 to x=0 over 1.5s
-        overlay_filter = f"[bg][txt]overlay=x='-100 + (100/1.5)*min(t,1.5)':y=0[v]"
+        overlay_filter = f"[bg][txt]overlay=x='-100 + (100/1.5)*min(t,1.5)':y=0[v];"
         
         if audio_tts_path and os.path.exists(audio_tts_path):
             # Mixagem: música de fundo (vol 0.25) + TTS (vol 1.5, speed 1.5x)
