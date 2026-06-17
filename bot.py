@@ -237,7 +237,8 @@ def gerar_audio_tts(titulo_noticia):
         import edge_tts
 
         async def _gerar_edge():
-            communicate = edge_tts.Communicate(texto, voice="pt-BR-AntonioNeural")
+            # rate="+50%" equivale a 1.5x da velocidade normal com dicção natural
+            communicate = edge_tts.Communicate(texto, voice="pt-BR-AntonioNeural", rate="+50%")
             await communicate.save(tts_file)
 
         # Compatibilidade com ambientes que já têm um event loop (ex: Jupyter)
@@ -301,10 +302,11 @@ def gerar_video_ffmpeg(img_bg_path, img_text_path, audio_bg_path, audio_tts_path
         overlay_filter = f"[bg][txt]overlay=x='-100 + (100/1.5)*min(t,1.5)':y=0[v];"
         
         if audio_tts_path and os.path.exists(audio_tts_path):
-            # Mixagem: música de fundo (vol 0.25) + TTS (vol 1.5, speed 1.5x)
+            # Mixagem: música de fundo (vol 0.10) + TTS (vol 2.5)
+            # A velocidade já está sendo acelerada nativamente na IA (edge-tts)
             audio_filter = (
-                "[2:a]volume=0.25[a_bg];"
-                "[3:a]volume=1.5,atempo=1.5[a_tts];"
+                "[2:a]volume=0.10[a_bg];"
+                "[3:a]volume=2.5[a_tts];"
                 "[a_bg][a_tts]amix=inputs=2:duration=longest[a_mix];"
                 f"[a_mix]afade=t=in:st=0:d=0.5,afade=t=out:st={max(duration-1,0)}:d=1[a]"
             )
