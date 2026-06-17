@@ -226,29 +226,36 @@ def gerar_gancho(title):
 def gerar_audio_tts(titulo_noticia):
     """
     Gera o áudio TTS para a notícia.
-    Tenta usar edge-tts para voz masculina, se falhar, usa gTTS.
+    Tenta usar edge-tts (API Python) para voz masculina, se falhar, usa gTTS.
     """
+    import asyncio
     texto = f"{titulo_noticia}. Veja completo no link azul na legenda."
     tts_file = "temp_tts.mp3"
-    
-    # Tentativa 1: edge-tts (Voz Masculina pt-BR-AntonioNeural)
+
+    # Tentativa 1: edge-tts via API Python (Voz Masculina pt-BR-AntonioNeural)
     try:
-        cmd = [
-            "edge-tts",
-            "--voice", "pt-BR-AntonioNeural",
-            "--text", texto,
-            "--write-media", tts_file
-        ]
-        creationflags = 0
-        if os.name == 'nt':
-            creationflags = subprocess.CREATE_NO_WINDOW
-            
-        res = subprocess.run(cmd, capture_output=True, text=True, creationflags=creationflags)
-        if res.returncode == 0 and os.path.exists(tts_file):
-            log.info("✅ Áudio TTS gerado (edge-tts - voz masculina)")
+        import edge_tts
+
+        async def _gerar_edge():
+            communicate = edge_tts.Communicate(texto, voice="pt-BR-AntonioNeural")
+            await communicate.save(tts_file)
+
+        # Compatibilidade com ambientes que já têm um event loop (ex: Jupyter)
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_closed():
+                raise RuntimeError("Loop fechado")
+            loop.run_until_complete(_gerar_edge())
+        except RuntimeError:
+            asyncio.run(_gerar_edge())
+
+        if os.path.exists(tts_file) and os.path.getsize(tts_file) > 0:
+            log.info("✅ Áudio TTS gerado (edge-tts - voz masculina pt-BR-AntonioNeural)")
             return tts_file
         else:
-            log.warning(f"⚠️ Falha no edge-tts: {res.stderr}")
+            log.warning("⚠️ edge-tts gerou arquivo vazio ou não encontrado.")
+    except ImportError:
+        log.warning("⚠️ edge-tts não instalado. Tentando gTTS...")
     except Exception as e:
         log.warning(f"⚠️ Erro ao tentar edge-tts: {e}")
 
@@ -258,14 +265,17 @@ def gerar_audio_tts(titulo_noticia):
         from gtts import gTTS
         tts = gTTS(text=texto, lang='pt', slow=False)
         tts.save(tts_file)
-        log.info("✅ Áudio TTS gerado (gTTS)")
-        return tts_file
+        if os.path.exists(tts_file) and os.path.getsize(tts_file) > 0:
+            log.info("✅ Áudio TTS gerado (gTTS)")
+            return tts_file
     except ImportError:
         log.warning("⚠️ Biblioteca gTTS não instalada. Execute: pip install gTTS edge-tts")
     except Exception as e:
         log.error(f"❌ Erro ao gerar TTS (gTTS): {e}")
 
+    log.error("❌ Todos os métodos TTS falharam. Prosseguindo sem narração.")
     return None
+
 
 def gerar_video_ffmpeg(img_bg_path, img_text_path, audio_bg_path, audio_tts_path, output_path, duration=20):
     """
