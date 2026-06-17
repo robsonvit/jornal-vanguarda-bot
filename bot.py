@@ -223,10 +223,55 @@ def gerar_gancho(title):
     log.warning("❌ Falha em todas as tentativas do Gemini. Usando título genérico.")
     return default_res
 
-def gerar_video_ffmpeg(img_bg_path, img_text_path, audio_path, output_path, duration=20):
+def gerar_audio_tts(titulo_noticia):
+    """
+    Gera o áudio TTS para a notícia.
+    Tenta usar edge-tts para voz masculina, se falhar, usa gTTS.
+    """
+    texto = f"{titulo_noticia}. Veja completo no link azul na legenda."
+    tts_file = "temp_tts.mp3"
+    
+    # Tentativa 1: edge-tts (Voz Masculina pt-BR-AntonioNeural)
+    try:
+        cmd = [
+            "edge-tts",
+            "--voice", "pt-BR-AntonioNeural",
+            "--text", texto,
+            "--write-media", tts_file
+        ]
+        creationflags = 0
+        if os.name == 'nt':
+            creationflags = subprocess.CREATE_NO_WINDOW
+            
+        res = subprocess.run(cmd, capture_output=True, text=True, creationflags=creationflags)
+        if res.returncode == 0 and os.path.exists(tts_file):
+            log.info("✅ Áudio TTS gerado (edge-tts - voz masculina)")
+            return tts_file
+        else:
+            log.warning(f"⚠️ Falha no edge-tts: {res.stderr}")
+    except Exception as e:
+        log.warning(f"⚠️ Erro ao tentar edge-tts: {e}")
+
+    # Tentativa 2: gTTS (Voz Feminina fallback)
+    log.info("🔄 Usando gTTS (voz feminina) como fallback...")
+    try:
+        from gtts import gTTS
+        tts = gTTS(text=texto, lang='pt', slow=False)
+        tts.save(tts_file)
+        log.info("✅ Áudio TTS gerado (gTTS)")
+        return tts_file
+    except ImportError:
+        log.warning("⚠️ Biblioteca gTTS não instalada. Execute: pip install gTTS edge-tts")
+    except Exception as e:
+        log.error(f"❌ Erro ao gerar TTS (gTTS): {e}")
+
+    return None
+
+def gerar_video_ffmpeg(img_bg_path, img_text_path, audio_bg_path, audio_tts_path, output_path, duration=20):
     """
     Cria um vídeo com movimento real (efeito Ken Burns / zoom suave) no background,
     e o texto aparece com um leve movimento da esquerda para a direita + fade in (1.5s).
+    Mixagem de áudio: música de fundo (volume 0.25) + voz TTS (volume 1.5, acelerada 1.5x).
     """
     log.info(f"🎞️ Gerando vídeo DINÂMICO de {duration}s com Ken Burns e texto animado...")
     try:
@@ -245,20 +290,38 @@ def gerar_video_ffmpeg(img_bg_path, img_text_path, audio_path, output_path, dura
         # Overlay: slide from x=-100 to x=0 over 1.5s
         overlay_filter = f"[bg][txt]overlay=x='-100 + (100/1.5)*min(t,1.5)':y=0[v]"
         
-        audio_filter = f"[2:a]afade=t=in:st=0:d=0.5,afade=t=out:st={max(duration-1,0)}:d=1[a]"
+        if audio_tts_path and os.path.exists(audio_tts_path):
+            # Mixagem: música de fundo (vol 0.25) + TTS (vol 1.5, speed 1.5x)
+            audio_filter = (
+                "[2:a]volume=0.25[a_bg];"
+                "[3:a]volume=1.5,atempo=1.5[a_tts];"
+                "[a_bg][a_tts]amix=inputs=2:duration=longest[a_mix];"
+                f"[a_mix]afade=t=in:st=0:d=0.5,afade=t=out:st={max(duration-1,0)}:d=1[a]"
+            )
+            inputs_cmd = [
+                "-i", img_bg_path,
+                "-loop", "1", "-framerate", str(fps), "-i", img_text_path,
+                "-stream_loop", "-1", "-i", audio_bg_path,
+                "-i", audio_tts_path
+            ]
+        else:
+            # Apenas música de fundo (fallback sem TTS)
+            audio_filter = (
+                "[2:a]volume=1.0[a_bg];"
+                f"[a_bg]afade=t=in:st=0:d=0.5,afade=t=out:st={max(duration-1,0)}:d=1[a]"
+            )
+            inputs_cmd = [
+                "-i", img_bg_path,
+                "-loop", "1", "-framerate", str(fps), "-i", img_text_path,
+                "-stream_loop", "-1", "-i", audio_bg_path
+            ]
         
-        filter_complex = bg_filter + text_filter + overlay_filter + ";" + audio_filter
+        filter_complex = bg_filter + text_filter + overlay_filter + audio_filter
 
         cmd = [
             "ffmpeg", "-y",
-            "-loop", "1",
-            "-framerate", str(fps),
-            "-i", img_bg_path,
-            "-loop", "1",
-            "-framerate", str(fps),
-            "-i", img_text_path,
-            "-stream_loop", "-1",
-            "-i", audio_path,
+            "-loop", "1", "-framerate", str(fps)
+        ] + inputs_cmd + [
             "-filter_complex", filter_complex,
             "-map", "[v]",
             "-map", "[a]",
@@ -275,7 +338,12 @@ def gerar_video_ffmpeg(img_bg_path, img_text_path, audio_path, output_path, dura
             "-t", str(duration),
             output_path
         ]
-        result = subprocess.run(cmd, check=True, capture_output=True)
+        
+        creationflags = 0
+        if os.name == 'nt':
+            creationflags = subprocess.CREATE_NO_WINDOW
+            
+        result = subprocess.run(cmd, check=True, capture_output=True, creationflags=creationflags)
         log.info(f"✅ Vídeo dinâmico gerado: {output_path}")
         return True
     except subprocess.CalledProcessError as e:
@@ -715,7 +783,10 @@ def main():
             # Facebook exige entre 15 e 90s; usamos 20-45s para garantir qualidade
             duracao_random = random.randint(20, 45)
             
-            if not gerar_video_ffmpeg(temp_reel_bg, temp_reel_text, audio_sel, temp_video, duration=duracao_random):
+            # --- GERAR AUDIO TTS ---
+            temp_tts = gerar_audio_tts(n["title"])
+            
+            if not gerar_video_ffmpeg(temp_reel_bg, temp_reel_text, audio_sel, temp_tts, temp_video, duration=duracao_random):
                 continue
             
             hashtags = estetica.get("hashtags", "#noticias #brasil").lower()
@@ -756,8 +827,8 @@ def main():
                 save_state(posted_ids, posted_titles)
                 
                 # Limpeza
-                for f in [temp_reel_bg, temp_reel_text, temp_post_img, temp_video]:
-                    if os.path.exists(f): os.remove(f)
+                for f in [temp_reel_bg, temp_reel_text, temp_post_img, temp_video, temp_tts]:
+                    if f and os.path.exists(f): os.remove(f)
                 break
             else:
                 log.error("Falha ao publicar Reel.")
@@ -765,8 +836,8 @@ def main():
                 # Tentar identificar se o erro foi de TOKEN expirado (OAuthException 190)
                 # O erro costuma vir no log do publicar_reel ou no traceback.
                 # Se for token, não adianta tentar as próximas notícias agora.
-                for f in [temp_reel_bg, temp_reel_text, temp_post_img, temp_video]:
-                    if os.path.exists(f): os.remove(f)
+                for f in [temp_reel_bg, temp_reel_text, temp_post_img, temp_video, temp_tts]:
+                    if f and os.path.exists(f): os.remove(f)
                 
                 # Verificação simplificada de erro de token no log (simulada aqui pelo fluxo)
                 # Em um cenário real, poderíamos checar a resposta da API Meta no publicar_reel
