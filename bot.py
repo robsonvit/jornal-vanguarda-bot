@@ -893,8 +893,9 @@ def main():
             padding_bottom = "\n.\n.\n.\n"
             msg = f"😱 {estetica.get('tag', 'NOTÍCIA').upper()}: {misterio}... 😱\n.\n{hashtags}{padding_bottom}👇 O link da notícia completa está no primeiro comentário 👇"
             
-            # Legenda específica para imagem: curta, sem hashtags, finalizando em "Ver mais..."
-            msg_img = f"😱 {estetica.get('tag', 'NOTÍCIA').upper()}: {misterio}... Ver mais..."
+            # Legenda específica para imagem: super curta para não ser cortada no celular
+            misterio_curto = misterio[:20].strip()
+            msg_img = f"😱 {estetica.get('tag', 'NOTÍCIA').upper()}: {misterio_curto}... Ver mais..."
             
             video_id = publicar_reel(FB_PAGE_ID, FB_TOKEN, temp_video, msg)
             
