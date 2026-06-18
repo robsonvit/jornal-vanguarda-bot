@@ -27,7 +27,7 @@ jobs:
         run: python -m playwright install chromium
 
       - name: 🎥 Instalar FFmpeg (Rápido)
-        uses: FedericoCarboni/setup-ffmpeg@v3
+        uses: AnimMouse/setup-ffmpeg@v1
 
       - name: 🤖 Rodar Bot
         env:
